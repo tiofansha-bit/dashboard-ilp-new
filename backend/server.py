@@ -288,7 +288,7 @@ async def update_question(kode: str, body: dict, user=Depends(require_admin)):
     return await db.master_questions.find_one({"kode": kode}, {"_id": 0})
 
 QUESTION_SECTIONS = {"ceklis", "tanda_bahaya"}
-QUESTION_JENIS = {"number", "single", "yesno", "pemeriksaan", "imunisasi", "danger"}
+QUESTION_JENIS = {"number", "single", "multi", "yesno", "pemeriksaan", "imunisasi", "danger"}
 
 @api.post("/master/questions")
 async def create_question(body: dict, user=Depends(require_admin)):
