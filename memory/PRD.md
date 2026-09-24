@@ -29,3 +29,9 @@ users 31 · wilayah 4 · posyandu 6 · master_questions 135 · keluarga 56 · an
 
 ## Backlog / Next
 - Full UI regression via testing agent if deeper coverage needed.
+
+## Re-import (2026-06, latest branch)
+- Re-cloned repo; confirmed latest branch by commit date = `conflict_230926_1944` (Sep 24). Re-copied backend+frontend into /app.
+- Re-applied env CORS fix (allow_origin_regex for *.emergentagent.com & *.emergentcf.cloud — needed because CDN rewrites browser Origin to *.emergentcf.cloud).
+- Recreated backend/.env & frontend/.env (gitignored). Reinstalled deps (backend minus emergentintegrations pin; frontend yarn). Restored snapshot data. Restarted supervisor.
+- Verified: preflight 200, admin login 200, kader11 login 200, /auth/me 200.
