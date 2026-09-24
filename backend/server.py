@@ -1086,8 +1086,12 @@ async def delete_akreditasi(did: str, user=Depends(require_admin)):
     await db.akreditasi.delete_one({"id": did}); return {"ok": True}
 
 app.include_router(api)
+_frontend_url = os.environ.get("FRONTEND_URL", "").strip()
+_cors_env = [o.strip() for o in os.environ.get("CORS_ORIGINS", "").split(",") if o.strip() and o.strip() != "*"]
+_allowed_origins = list({o for o in ([_frontend_url] if _frontend_url else []) + _cors_env})
 app.add_middleware(CORSMiddleware, allow_credentials=True,
-                   allow_origins=[os.environ.get("FRONTEND_URL", "*")] if os.environ.get("FRONTEND_URL") else ["*"],
+                   allow_origins=_allowed_origins,
+                   allow_origin_regex=r"https?://(localhost|127\.0\.0\.1)(:\d+)?|https://[a-z0-9.-]+\.(emergentagent\.com|emergentcf\.cloud)",
                    allow_methods=["*"], allow_headers=["*"])
 
 @app.on_event("shutdown")
