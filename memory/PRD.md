@@ -42,3 +42,9 @@ users 31 · wilayah 4 · posyandu 6 · master_questions 135 · keluarga 56 · an
 - Frontend MasterQuestions.js: tombol 'Tambah Pertanyaan' + modal (group, section, jenis, text, definisi, satuan, opsi, wajib, priority, problem_when, report_required) + tombol hapus utk pertanyaan custom + badge 'baru'.
 - Pertanyaan ceklis baru otomatis muncul di wizard kunjungan kader untuk group tsb.
 - Testing agent: 100% backend & frontend, DB bersih.
+
+## Fix + Features (2026-06, session 4)
+- FIX "Network Error di preview": penyebab uvicorn --reload memegang CWD /app/backend yg sudah di-rm-rf saat re-import (FileNotFoundError getcwd) -> backend down intermiten. Solusi: clean supervisor restart. Terverifikasi testing agent 100% (login + semua menu admin, tanpa network error).
+- FEATURE Edit Penuh Pertanyaan Custom: EditModal kini menampilkan field jenis, section, satuan, opsi, report_required KHUSUS pertanyaan custom (built-in tetap edit terbatas). Backend PUT /master/questions/{kode} disanitasi utk terima field penuh.
+- FEATURE Impor Pertanyaan Excel: GET /admin/import/template/pertanyaan + POST /admin/import/pertanyaan (kolom group,section,text,jenis,satuan,opsi,wajib,priority,problem_when,report_required,definisi; opsi & problem_when dipisah ';'). Card baru 'Impor Pertanyaan' di halaman Import Data. Baris invalid dilewati & dilaporkan.
+- Testing agent iteration_4: 100% backend & frontend, DB baseline.
