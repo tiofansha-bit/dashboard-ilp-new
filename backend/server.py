@@ -269,7 +269,20 @@ async def get_questions(group: Optional[str] = None, user=Depends(get_current_us
 
 @api.put("/master/questions/{kode}")
 async def update_question(kode: str, body: dict, user=Depends(require_admin)):
-    body.pop("_id", None); body.pop("kode", None)
+    body.pop("_id", None); body.pop("kode", None); body.pop("group", None)
+    body.pop("urutan", None); body.pop("custom", None); body.pop("deleted", None)
+    if "section" in body and body["section"] not in QUESTION_SECTIONS:
+        body.pop("section")
+    if "jenis" in body and body["jenis"] not in QUESTION_JENIS:
+        body.pop("jenis")
+    if "opsi" in body and isinstance(body["opsi"], str):
+        body["opsi"] = [s.strip() for s in body["opsi"].split(",") if s.strip()]
+    if "problem_when" in body and isinstance(body["problem_when"], str):
+        body["problem_when"] = [s.strip() for s in body["problem_when"].split(",") if s.strip()]
+    if "satuan" in body:
+        body["satuan"] = (str(body["satuan"]).strip() or None) if body["satuan"] else None
+    if "priority" in body and body["priority"] not in ("kuning", "merah"):
+        body["priority"] = None
     await db.master_questions.update_one({"kode": kode}, {"$set": body})
     await audit(user, "update", "master_pertanyaan", kode, json.dumps(body)[:200])
     return await db.master_questions.find_one({"kode": kode}, {"_id": 0})
@@ -1078,6 +1091,81 @@ async def import_kader(file: UploadFile = File(...), user=Depends(require_admin)
                "password_hash": hash_password(pw), "created_at": iso()}
         await db.users.insert_one(doc); created += 1
     await audit(user, "import", "kader", "", f"{created} dibuat, {len(errors)} gagal")
+    return {"ok": True, "created": created, "gagal": len(errors), "errors": errors[:50]}
+
+PERTANYAAN_COLS = ["group", "section", "text", "jenis", "satuan", "opsi", "wajib", "priority", "problem_when", "report_required", "definisi"]
+_GROUP_LABELS = {k: v for k, v in KELOMPOK_LABEL.items() if k != "belum_ditentukan"}
+
+@api.get("/admin/import/template/pertanyaan")
+async def template_pertanyaan(user=Depends(require_admin)):
+    grp = ", ".join(_GROUP_LABELS.keys())
+    panduan = [
+        "1. Isi data mulai baris ke-2 pada sheet 'Data'. JANGAN mengubah nama kolom di baris 1.",
+        "2. Kolom WAJIB: group dan text.",
+        f"3. 'group' harus salah satu kode: {grp}.",
+        "4. 'section' diisi 'ceklis' (pertanyaan biasa) atau 'tanda_bahaya'. Kosong = ceklis.",
+        "5. 'jenis' diisi salah satu: yesno, single, number, pemeriksaan, imunisasi, danger. Kosong = yesno.",
+        "6. 'opsi' hanya untuk jenis 'single' — pisahkan pilihan dengan tanda titik-koma (;). Contoh: Ya; Tidak; Tidak tahu.",
+        "7. 'satuan' untuk jenis 'number' (mis. °C, kg, cm).",
+        "8. 'wajib' & 'report_required' diisi 'Ya' atau 'Tidak'.",
+        "9. 'priority' diisi 'kuning' atau 'merah' (boleh dikosongkan).",
+        "10. 'problem_when' = jawaban penanda masalah, pisahkan dengan titik-koma (;). Contoh: Tidak; Tidak tahu.",
+        "11. Kode pertanyaan dibuat otomatis. Baris contoh boleh dihapus sebelum diunggah.",
+    ]
+    example = ["ibu_hamil", "ceklis", "Apakah ibu rutin minum tablet tambah darah?", "single", "", "Ya; Kadang; Tidak", "Ya", "kuning", "Tidak; Kadang", "Tidak", "Kepatuhan konsumsi TTD selama kehamilan"]
+    wb = _build_template(PERTANYAAN_COLS, example, panduan, "PANDUAN IMPOR MASTER PERTANYAAN")
+    return _xlsx_response(wb, "template_pertanyaan.xlsx")
+
+def _split_multi(v):
+    s = str(v or "").strip()
+    if not s:
+        return []
+    parts = re.split(r"[;\n]", s) if (";" in s or "\n" in s) else s.split(",")
+    return [p.strip() for p in parts if p.strip()]
+
+@api.post("/admin/import/pertanyaan")
+async def import_pertanyaan(file: UploadFile = File(...), user=Depends(require_admin)):
+    header, data_rows = _read_sheet(await file.read())
+    created, errors = 0, []
+    urutan_cache = {}
+    for idx, raw in enumerate(data_rows, start=2):
+        rec = {header[i]: raw[i] for i in range(len(header)) if i < len(raw)}
+        text = str(rec.get("text") or "").strip()
+        group = str(rec.get("group") or "").strip().lower()
+        if not text and not group and not any(v not in (None, "") for v in (raw or [])):
+            continue
+        if not text or not group:
+            errors.append({"row": idx, "msg": "group dan text wajib diisi"}); continue
+        if group not in _GROUP_LABELS:
+            errors.append({"row": idx, "msg": f"group '{group}' tidak valid"}); continue
+        section = str(rec.get("section") or "ceklis").strip().lower()
+        if section not in QUESTION_SECTIONS:
+            section = "ceklis"
+        jenis = str(rec.get("jenis") or "yesno").strip().lower()
+        if jenis not in QUESTION_JENIS:
+            jenis = "yesno"
+        base = re.sub(r"[^A-Z0-9]+", "_", f"{group}_{text[:20]}".upper()).strip("_") or group.upper()
+        kode = base; n = 1
+        while await db.master_questions.find_one({"kode": kode}):
+            n += 1; kode = f"{base}_{n}"
+        if group not in urutan_cache:
+            last = await db.master_questions.find_one({"group": group}, sort=[("urutan", -1)])
+            urutan_cache[group] = (last.get("urutan", 0) if last else 0)
+        urutan_cache[group] += 1
+        priority = str(rec.get("priority") or "").strip().lower() or None
+        if priority not in (None, "kuning", "merah"):
+            priority = None
+        doc = {
+            "kode": kode, "group": group, "section": section, "text": text,
+            "definisi": str(rec.get("definisi") or "").strip(),
+            "jenis": jenis, "satuan": (str(rec.get("satuan")).strip() or None) if rec.get("satuan") else None,
+            "opsi": _split_multi(rec.get("opsi")), "wajib": _parse_bool_cell(rec.get("wajib")) or False,
+            "problem_when": _split_multi(rec.get("problem_when")), "priority": priority,
+            "report_required": _parse_bool_cell(rec.get("report_required")) or False,
+            "urutan": urutan_cache[group], "deleted": False, "custom": True,
+        }
+        await db.master_questions.insert_one(doc); created += 1
+    await audit(user, "import", "master_pertanyaan", "", f"{created} dibuat, {len(errors)} gagal")
     return {"ok": True, "created": created, "gagal": len(errors), "errors": errors[:50]}
 
 # ==================== AUDIT LOG ====================

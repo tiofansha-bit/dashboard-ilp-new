@@ -122,25 +122,56 @@ function AddModal({ defaultGroup, onClose, onSaved }) {
 }
 
 function EditModal({ q, onClose, onSaved }) {
-  const [f, setF] = useState({ text: q.text, definisi: q.definisi || "", priority: q.priority || "", wajib: q.wajib, problem_when: (q.problem_when || []).join(", ") });
+  const isCustom = !!q.custom;
+  const [f, setF] = useState({
+    text: q.text, definisi: q.definisi || "", priority: q.priority || "", wajib: q.wajib,
+    problem_when: (q.problem_when || []).join(", "),
+    section: q.section || "ceklis", jenis: q.jenis || "yesno", satuan: q.satuan || "",
+    opsi: (q.opsi || []).join(", "), report_required: !!q.report_required,
+  });
   const [saving, setSaving] = useState(false);
+  const set = (k, v) => setF((p) => ({ ...p, [k]: v }));
   const save = async () => {
+    if (!f.text.trim()) { toast.error("Teks pertanyaan wajib diisi"); return; }
+    if (isCustom && f.jenis === "single" && !f.opsi.trim()) { toast.error("Isi pilihan jawaban untuk jenis Pilihan"); return; }
     setSaving(true);
-    try { await api.put(`/master/questions/${q.kode}`, { text: f.text, definisi: f.definisi, priority: f.priority || null, wajib: f.wajib, problem_when: f.problem_when.split(",").map((s) => s.trim()).filter(Boolean) }); toast.success("Pertanyaan diperbarui"); onSaved(); }
-    catch (e) { toast.error(errMsg(e)); } finally { setSaving(false); }
+    try {
+      const payload = {
+        text: f.text.trim(), definisi: f.definisi.trim(), priority: f.priority || null, wajib: f.wajib,
+        problem_when: f.problem_when.split(",").map((s) => s.trim()).filter(Boolean),
+      };
+      if (isCustom) {
+        payload.section = f.section;
+        payload.jenis = f.jenis;
+        payload.satuan = f.satuan.trim() || null;
+        payload.opsi = f.opsi.split(",").map((s) => s.trim()).filter(Boolean);
+        payload.report_required = f.report_required;
+      }
+      await api.put(`/master/questions/${q.kode}`, payload);
+      toast.success("Pertanyaan diperbarui"); onSaved();
+    } catch (e) { toast.error(errMsg(e)); } finally { setSaving(false); }
   };
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
-      <div className="w-full max-w-md rounded-2xl bg-white p-5" onClick={(e) => e.stopPropagation()}>
-        <div className="mb-3 flex items-center justify-between"><h3 className="flex items-center gap-2 text-lg font-bold text-slate-900"><ListChecks className="h-5 w-5 text-teal-600" /> Edit Pertanyaan</h3><button onClick={onClose}><X className="h-5 w-5 text-slate-400" /></button></div>
+      <div data-testid="mq-edit-modal" className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-white p-5" onClick={(e) => e.stopPropagation()}>
+        <div className="mb-3 flex items-center justify-between"><h3 className="flex items-center gap-2 text-lg font-bold text-slate-900"><ListChecks className="h-5 w-5 text-teal-600" /> Edit Pertanyaan{isCustom && <span className="rounded bg-teal-100 px-1.5 py-0.5 text-[10px] font-bold uppercase text-teal-700">custom</span>}</h3><button onClick={onClose}><X className="h-5 w-5 text-slate-400" /></button></div>
         <div className="space-y-3">
-          <div><label className={lbl}>Teks Pertanyaan</label><input className={cls} value={f.text} onChange={(e) => setF({ ...f, text: e.target.value })} /></div>
-          <div><label className={lbl}>Definisi Operasional</label><textarea rows={3} className={cls} value={f.definisi} onChange={(e) => setF({ ...f, definisi: e.target.value })} /></div>
+          {isCustom && (
+            <div className="grid grid-cols-2 gap-3">
+              <div><label className={lbl}>Bagian</label><select data-testid="mq-edit-section" className={cls} value={f.section} onChange={(e) => set("section", e.target.value)}>{SECTIONS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select></div>
+              <div><label className={lbl}>Jenis Jawaban</label><select data-testid="mq-edit-jenis" className={cls} value={f.jenis} onChange={(e) => set("jenis", e.target.value)}>{JENIS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select></div>
+            </div>
+          )}
+          <div><label className={lbl}>Teks Pertanyaan</label><input data-testid="mq-edit-text" className={cls} value={f.text} onChange={(e) => set("text", e.target.value)} /></div>
+          <div><label className={lbl}>Definisi Operasional</label><textarea rows={2} className={cls} value={f.definisi} onChange={(e) => set("definisi", e.target.value)} /></div>
+          {isCustom && f.jenis === "number" && <div><label className={lbl}>Satuan (opsional)</label><input data-testid="mq-edit-satuan" className={cls} value={f.satuan} onChange={(e) => set("satuan", e.target.value)} placeholder="mis. °C, kg, cm" /></div>}
+          {isCustom && f.jenis === "single" && <div><label className={lbl}>Pilihan Jawaban (pisah koma)</label><input data-testid="mq-edit-opsi" className={cls} value={f.opsi} onChange={(e) => set("opsi", e.target.value)} placeholder="Ya, Tidak, Tidak tahu" /></div>}
           <div className="grid grid-cols-2 gap-3">
-            <div><label className={lbl}>Prioritas jika bermasalah</label><select className={cls} value={f.priority} onChange={(e) => setF({ ...f, priority: e.target.value })}><option value="">- tidak ada -</option><option value="kuning">Kuning</option><option value="merah">Merah</option></select></div>
-            <div><label className={lbl}>Wajib?</label><select className={cls} value={f.wajib ? "1" : "0"} onChange={(e) => setF({ ...f, wajib: e.target.value === "1" })}><option value="1">Wajib</option><option value="0">Opsional</option></select></div>
+            <div><label className={lbl}>Prioritas jika bermasalah</label><select className={cls} value={f.priority} onChange={(e) => set("priority", e.target.value)}><option value="">- tidak ada -</option><option value="kuning">Kuning</option><option value="merah">Merah</option></select></div>
+            <div><label className={lbl}>Wajib?</label><select className={cls} value={f.wajib ? "1" : "0"} onChange={(e) => set("wajib", e.target.value === "1")}><option value="1">Wajib</option><option value="0">Opsional</option></select></div>
           </div>
-          <div><label className={lbl}>Jawaban penanda masalah (pisah koma)</label><input className={cls} value={f.problem_when} onChange={(e) => setF({ ...f, problem_when: e.target.value })} placeholder="Tidak, Ya" /></div>
+          <div><label className={lbl}>Jawaban penanda masalah (pisah koma)</label><input className={cls} value={f.problem_when} onChange={(e) => set("problem_when", e.target.value)} placeholder="Tidak, Ya" /></div>
+          {isCustom && <label className="flex items-center gap-2 text-sm text-slate-600"><input type="checkbox" checked={f.report_required} onChange={(e) => set("report_required", e.target.checked)} className="h-4 w-4 rounded border-slate-300 text-teal-600" /> Wajib dilaporkan ke petugas jika bermasalah</label>}
         </div>
         <button data-testid="mq-save" onClick={save} disabled={saving} className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-teal-600 py-2.5 font-semibold text-white disabled:opacity-60">{saving ? <Loader2 className="h-5 w-5 animate-spin" /> : "Simpan"}</button>
       </div>

@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { api, errMsg } from "@/lib/api";
 import { toast } from "sonner";
-import { Download, Upload, FileSpreadsheet, CheckCircle2, AlertTriangle, Loader2, Users, UserCog } from "lucide-react";
+import { Download, Upload, FileSpreadsheet, CheckCircle2, AlertTriangle, Loader2, Users, UserCog, ListChecks } from "lucide-react";
 
 function ImportCard({ testid, icon: Icon, title, desc, templateUrl, templateName, uploadUrl, panduan, assignKader = false }) {
   const [file, setFile] = useState(null);
@@ -162,6 +162,23 @@ export default function ImportData() {
             "Username harus unik. Password kosong = default 'kader123'.",
             "Wilayah diisi satu kelurahan. target_keluarga berupa angka (default 30).",
             "Isi mulai baris ke-2; jangan ubah nama kolom. Hapus baris contoh sebelum unggah.",
+          ]}
+        />
+        <ImportCard
+          testid="import-pertanyaan"
+          icon={ListChecks}
+          title="Impor Pertanyaan"
+          desc="Tambah banyak pertanyaan ceklis sekaligus"
+          templateUrl="/admin/import/template/pertanyaan"
+          templateName="template_pertanyaan.xlsx"
+          uploadUrl="/admin/import/pertanyaan"
+          panduan={[
+            "Kolom wajib: group dan text.",
+            "group: ibu_hamil, nifas, bayi, balita, remaja, dewasa, lansia, atau tbc.",
+            "jenis: yesno, single, number, pemeriksaan, imunisasi, atau danger (kosong = yesno).",
+            "opsi (untuk jenis single) & problem_when dipisah dengan titik-koma (;).",
+            "wajib & report_required diisi 'Ya'/'Tidak'. priority: kuning/merah/kosong.",
+            "Kode dibuat otomatis. Isi mulai baris ke-2; jangan ubah nama kolom.",
           ]}
         />
       </div>
