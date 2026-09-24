@@ -42,6 +42,7 @@ users 31 · wilayah 4 · posyandu 6 · master_questions 135 · keluarga 56 · an
 - FEATURE Tindak Lanjut Pustu (admin-only): menu baru di AdminApp -> TindakLanjutPustu.js. Tab "Kasus Temuan" auto-isi (nama/NIK/tgl lahir/alamat/no telp/masalah/posyandu) dari kasus, petugas isi tindak lanjut; tab "Rekap" untuk lihat/edit/hapus; ada input manual. Backend: koleksi tindak_lanjut_pustu + GET sumber, GET/POST/PUT/DELETE /api/admin/tindak-lanjut (require_admin).
 - Verifikasi Excel "Kartu Ceklis Kunjungan Rumah": item skrining TBC di sheet TB sudah termuat di group tbc. Sheet "Blkg" adalah definisi operasional (bukan pertanyaan). Sub-field administratif (tanggal dosis imunisasi, riwayat penyakit keluarga, jenis kontrasepsi, nama PMO, PMT) sengaja tidak didigitalisasi sebagai pertanyaan skrining.
 - Testing agent iteration_5: 100% backend & frontend, DB bersih.
+- FEATURE (lanjutan) Riwayat & Kontrasepsi di ceklis Dewasa: DEWASA_RIWAYAT_KELUARGA (multi-select: Hipertensi/DM/Stroke/Jantung/Asma/Kanker/Kolesterol) + DEWASA_KB (single: Tidak menggunakan/Pil/Kondom/Suntik/Implan/Lainnya). Ditambah jenis field baru "multi" di QuestionField.js + QUESTION_JENIS. Di-seed idempoten via seed_detail_questions (persist tiap startup). Informational (tanpa temuan/kasus). Testing agent iteration_6: 100% frontend.
 
 ## Feature: Tambah Ceklis/Pertanyaan (2026-06)
 - Verified browser login admin/admin123 -> dashboard + menu 'Import Data' & 'Master Pertanyaan' tampil.

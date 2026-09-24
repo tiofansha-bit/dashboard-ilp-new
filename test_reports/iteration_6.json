@@ -1,0 +1,33 @@
+{
+  "summary": "Frontend-only regression for two new DEWASA checklist fields in kader visit wizard. Logged in as kader11, started visit, picked first family, advanced through confirm to member-select, chose an adult member (Abdurrahman, Usia Dewasa 29 th), reached the DEWASA checklist. Both new fields render correctly with expected testids, options, and behaviors. Multi-select toggle works (3 active → 2 after toggling one off), single-select enforces exactly one active option. Fields coexist with existing DEWASA items and Skrining TBC section. Ringkasan shows 'Tidak ditemukan masalah' — informational fields correctly do NOT produce findings. Draft save works and returns to Beranda without errors.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "verifications": {
+    "q-DEWASA_RIWAYAT_KELUARGA_present": true,
+    "riwayat_chip_labels": ["Hipertensi", "Diabetes Melitus", "Stroke", "Jantung", "Asma", "Kanker", "Kolesterol Tinggi"],
+    "riwayat_multi_toggle_works": true,
+    "q-DEWASA_KB_present": true,
+    "kb_option_labels": ["Tidak menggunakan", "Pil", "Kondom", "Suntik", "Implan/Susuk", "Lainnya"],
+    "kb_single_select_enforced": true,
+    "tbc_screening_section_still_present": true,
+    "all_dewasa_q_ids": ["q-DEWASA_SUHU","q-DEWASA_PIRINGKU","q-DEWASA_TD","q-DEWASA_HT","q-DEWASA_HT_OBAT_ADA","q-DEWASA_HT_OBAT_MINUM","q-DEWASA_GD","q-DEWASA_DM","q-DEWASA_DM_OBAT_ADA","q-DEWASA_DM_OBAT_MINUM","q-DEWASA_ROKOK","q-DEWASA_JIWA","q-DEWASA_RIWAYAT_KELUARGA","q-DEWASA_KB"],
+    "ringkasan_no_findings_for_informational_fields": true,
+    "draft_save_ok": true
+  },
+  "test_report_links": [],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "QuestionField renders multi chips with same data-testid='<kode>-chip' for all options — fine for count-based assertions but individual chips are indistinguishable by testid; consider suffixing option index/name for future granular tests."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "N/A (skipped)", "frontend": "100%"},
+  "test_credentials": "kader11 / kader123",
+  "seed_data_creation": "None — one visit saved as draft (existing family), no cases submitted.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "New DEWASA fields (RIWAYAT_KELUARGA multi + KB single) fully verified in wizard flow. Ringkasan correctly ignores them (no priority/finding). Login testids are login-username-input / login-password-input / login-submit-button."
+}
