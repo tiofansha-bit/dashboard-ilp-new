@@ -36,6 +36,13 @@ users 31 · wilayah 4 · posyandu 6 · master_questions 135 · keluarga 56 · an
 - Recreated backend/.env & frontend/.env (gitignored). Reinstalled deps (backend minus emergentintegrations pin; frontend yarn). Restored snapshot data. Restarted supervisor.
 - Verified: preflight 200, admin login 200, kader11 login 200, /auth/me 200.
 
+## Session 5 (2026-06): Skrining TBC semua usia + Tindak Lanjut Pustu
+- Re-import repo dashboard-ilp-new (branch main) ke /app, install deps, restore snapshot, verifikasi login admin/kader.
+- FEATURE Skrining TBC semua usia: Wizard.js kini menampilkan seksi "Skrining TBC (semua usia)" (data-testid tbc-screening-section) di ceklis SETIAP anggota apa pun kelompok usianya (7 pertanyaan TBC_*, TBC_ROKOK dikecualikan agar tak duplikat). Temuan TBC ikut ke ringkasan & buat kasus saat kirim.
+- FEATURE Tindak Lanjut Pustu (admin-only): menu baru di AdminApp -> TindakLanjutPustu.js. Tab "Kasus Temuan" auto-isi (nama/NIK/tgl lahir/alamat/no telp/masalah/posyandu) dari kasus, petugas isi tindak lanjut; tab "Rekap" untuk lihat/edit/hapus; ada input manual. Backend: koleksi tindak_lanjut_pustu + GET sumber, GET/POST/PUT/DELETE /api/admin/tindak-lanjut (require_admin).
+- Verifikasi Excel "Kartu Ceklis Kunjungan Rumah": item skrining TBC di sheet TB sudah termuat di group tbc. Sheet "Blkg" adalah definisi operasional (bukan pertanyaan). Sub-field administratif (tanggal dosis imunisasi, riwayat penyakit keluarga, jenis kontrasepsi, nama PMO, PMT) sengaja tidak didigitalisasi sebagai pertanyaan skrining.
+- Testing agent iteration_5: 100% backend & frontend, DB bersih.
+
 ## Feature: Tambah Ceklis/Pertanyaan (2026-06)
 - Verified browser login admin/admin123 -> dashboard + menu 'Import Data' & 'Master Pertanyaan' tampil.
 - Backend: POST /api/master/questions (create) + DELETE /api/master/questions/{kode} (soft delete), skema sama dgn master_questions (kode auto-generate unik, urutan=max+1 per group, field 'custom':true).

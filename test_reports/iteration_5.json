@@ -1,0 +1,25 @@
+{
+  "summary": "Verified two new features end-to-end: (1) Admin 'Tindak Lanjut Pustu' menu + full CRUD (auto-fill from kasus, source 'Sudah' marker, rekap tab, edit, delete, manual add + validation) and (2) Universal TB screening ('Skrining TBC (semua usia)') that renders on EVERY member's checklist step regardless of age group (verified Dewasa, Sekolah/Remaja, Balita) with 7 TB questions (TBC_BATUK..TBC_OBAT_MINUM — TBC_ROKOK correctly excluded). Answering 'Batuk terus-menerus'=Ya on a Balita produced a finding in Ringkasan Masalah as expected. Backend pytest suite added (12 tests) — 12/12 passed covering TB group presence, TL Pustu auth guards, sumber shape (kasus_id/posyandu/nama/masalah/sudah_ada_tl), CRUD, kasus_id auto-marking sudah_ada_tl, and 404 on nonexistent delete. UI validation error 'Nama, posyandu, dan tindak lanjut wajib diisi' shows correctly when required fields are empty. All test data was cleaned up (created + deleted tindak_lanjut records). Kader visit wizard flow left as auto-saved draft (Draf tersimpan) — not submitted, so no case created in DB. Note: kader1..kader10 accounts are 'dinonaktifkan' — kader11 is active (as main agent hinted). This is a minor data-state observation, not a code bug.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_tindak_lanjut_pustu.py",
+    "/app/test_reports/pytest/tl_pustu.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "TindakLanjutPustu backend endpoints correctly gated by require_admin and exclude _id via projection — good.",
+    "tl_sumber joins anggota+keluarga per row synchronously in a loop (N+1). For 496 kasus rows the endpoint felt fine, but a batch fetch (find({id:{$in:[...]}})) would scale better.",
+    "Frontend Wizard tbc-screening-section pulls the 'tbc' master group and renders it per-member — TBC_ROKOK exclusion is honored (only 7 items rendered)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_tindak_lanjut_pustu.py (new)"
+  ],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "test_credentials": "admin/admin123, kader11/kader123 (kader1..kader10 currently deactivated)",
+  "seed_data_creation": "None — created 2 tindak_lanjut_pustu records during UI+API tests and deleted them all; DB clean.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Selectors used: login-username-input, login-password-input, login-submit-button, admin-nav-tindak-lanjut-pustu, tindak-lanjut-pustu-page, tl-filter-posyandu, tl-tab-sumber, tl-tab-rekap, tl-add-manual-btn, tl-sumber-row-<id>, tl-followup-btn-<kasus_id>, tl-modal, tl-input-{nama,nik,tgl,telp,alamat,posyandu,petugas,masalah,tindaklanjut}, tl-save-btn, tl-record-row-<id>, tl-edit-btn-<id>, tl-delete-btn-<id>. Wizard: btn-mulai-kunjungan, wizard-pick-<kel_id>, wizard-next-step-btn, wizard-member-<anggota_id>, tbc-screening-section, q-TBC_*, TBC_*-yes, TBC_*-no. Backend tests: pytest /app/backend/tests/test_tindak_lanjut_pustu.py (env REACT_APP_BACKEND_URL required).",
+  "rca of the issue": "N/A — no bugs found."
+}
