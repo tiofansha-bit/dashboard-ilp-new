@@ -35,3 +35,10 @@ users 31 · wilayah 4 · posyandu 6 · master_questions 135 · keluarga 56 · an
 - Re-applied env CORS fix (allow_origin_regex for *.emergentagent.com & *.emergentcf.cloud — needed because CDN rewrites browser Origin to *.emergentcf.cloud).
 - Recreated backend/.env & frontend/.env (gitignored). Reinstalled deps (backend minus emergentintegrations pin; frontend yarn). Restored snapshot data. Restarted supervisor.
 - Verified: preflight 200, admin login 200, kader11 login 200, /auth/me 200.
+
+## Feature: Tambah Ceklis/Pertanyaan (2026-06)
+- Verified browser login admin/admin123 -> dashboard + menu 'Import Data' & 'Master Pertanyaan' tampil.
+- Backend: POST /api/master/questions (create) + DELETE /api/master/questions/{kode} (soft delete), skema sama dgn master_questions (kode auto-generate unik, urutan=max+1 per group, field 'custom':true).
+- Frontend MasterQuestions.js: tombol 'Tambah Pertanyaan' + modal (group, section, jenis, text, definisi, satuan, opsi, wajib, priority, problem_when, report_required) + tombol hapus utk pertanyaan custom + badge 'baru'.
+- Pertanyaan ceklis baru otomatis muncul di wizard kunjungan kader untuk group tsb.
+- Testing agent: 100% backend & frontend, DB bersih.
