@@ -12,16 +12,18 @@ import AuditLog from "./AuditLog";
 import Laporan from "./Laporan";
 import RekapKader from "./RekapKader";
 import ImportData from "./ImportData";
+import TindakLanjutPustu from "./TindakLanjutPustu";
 import logo from "@/assets/logo.png";
 import {
   LayoutDashboard, AlertOctagon, Users, UserCog, ListChecks, PresentationIcon, ClipboardCheck,
-  ScrollText, FileDown, HeartPulse, LogOut, Bell, Menu, X, Presentation, KeyRound, Upload,
+  ScrollText, FileDown, HeartPulse, LogOut, Bell, Menu, X, Presentation, KeyRound, Upload, Stethoscope,
 } from "lucide-react";
 import ChangePassword from "@/components/ChangePassword";
 
 const MENU = [
   { key: "dashboard", label: "Dashboard", icon: LayoutDashboard },
   { key: "prioritas", label: "Daftar Prioritas", icon: AlertOctagon },
+  { key: "tindak-lanjut-pustu", label: "Tindak Lanjut Pustu", icon: Stethoscope },
   { key: "keluarga", label: "Keluarga & Sasaran", icon: Users },
   { key: "laporan", label: "Laporan & Rekap", icon: FileDown },
   { key: "akreditasi", label: "Mode", icon: Presentation },
@@ -121,6 +123,7 @@ export default function AdminApp() {
         <main className="flex-1 p-4 lg:p-8">
           {tab === "dashboard" && <Dashboard />}
           {tab === "prioritas" && <Prioritas onChange={loadNotif} />}
+          {tab === "tindak-lanjut-pustu" && <TindakLanjutPustu />}
           {tab === "keluarga" && <KeluargaAdmin />}
           {tab === "laporan" && <Laporan />}
           {tab === "akreditasi" && <Akreditasi />}

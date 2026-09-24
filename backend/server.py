@@ -713,6 +713,91 @@ async def update_kasus(cid: str, body: CaseUpdateIn, user=Depends(require_admin)
     await audit(user, "update", "kasus", cid, body.status or "")
     return await db.kasus.find_one({"id": cid}, {"_id": 0})
 
+# ==================== ADMIN: TINDAK LANJUT PUSTU ====================
+@api.get("/admin/tindak-lanjut/sumber")
+async def tl_sumber(posyandu: str = "", user=Depends(require_admin)):
+    """Daftar kasus temuan kunjungan sebagai sumber tindak lanjut Pustu (auto-isi identitas & masalah)."""
+    q = {}
+    if posyandu:
+        q["posyandu"] = posyandu
+    kasus = await db.kasus.find(q, {"_id": 0}).to_list(1000)
+    prio_rank = {"merah": 0, "kuning": 1, "hijau": 2}
+    kasus.sort(key=lambda r: (prio_rank.get(r.get("priority"), 9), r.get("waktu_lapor", "")))
+    done_ids = set(await db.tindak_lanjut_pustu.distinct("kasus_id"))
+    out = []
+    for k in kasus:
+        a = await db.anggota.find_one({"id": k.get("anggota_id")}, {"_id": 0}) if k.get("anggota_id") else None
+        kel = await db.keluarga.find_one({"id": k.get("keluarga_id")}, {"_id": 0}) if k.get("keluarga_id") else None
+        a = a or {}; kel = kel or {}
+        alamat = kel.get("alamat", "") or ""
+        if kel.get("rt") or kel.get("rw"):
+            alamat = f"{alamat} RT {kel.get('rt','-')}/{kel.get('rw','-')}".strip()
+        out.append({
+            "kasus_id": k["id"], "posyandu": k.get("posyandu", ""), "kelurahan": k.get("kelurahan", ""),
+            "priority": k.get("priority", ""), "status": k.get("status", ""),
+            "nama": k.get("sasaran_nama", ""), "masalah": k.get("masalah", ""),
+            "nik": a.get("nik", "") or "", "tanggal_lahir": (a.get("tanggal_lahir") or "")[:10],
+            "no_telp": a.get("no_hp", "") or kel.get("no_hp", "") or "",
+            "alamat": alamat, "sudah_ada_tl": k["id"] in done_ids,
+        })
+    return out
+
+@api.get("/admin/tindak-lanjut")
+async def tl_list(posyandu: str = "", user=Depends(require_admin)):
+    q = {}
+    if posyandu:
+        q["posyandu"] = posyandu
+    return await db.tindak_lanjut_pustu.find(q, {"_id": 0}).sort("created_at", -1).limit(1000).to_list(1000)
+
+@api.post("/admin/tindak-lanjut")
+async def tl_create(body: dict, user=Depends(require_admin)):
+    nama = str(body.get("nama") or "").strip()
+    posyandu = str(body.get("posyandu") or "").strip()
+    tindak_lanjut = str(body.get("tindak_lanjut") or "").strip()
+    if not nama or not posyandu or not tindak_lanjut:
+        raise HTTPException(400, "Nama, posyandu, dan tindak lanjut wajib diisi")
+    doc = {
+        "id": new_id(), "kasus_id": body.get("kasus_id") or None,
+        "posyandu": posyandu, "nama": nama,
+        "nik": str(body.get("nik") or "").strip(),
+        "tanggal_lahir": str(body.get("tanggal_lahir") or "").strip(),
+        "alamat": str(body.get("alamat") or "").strip(),
+        "no_telp": str(body.get("no_telp") or "").strip(),
+        "masalah": str(body.get("masalah") or "").strip(),
+        "tindak_lanjut": tindak_lanjut,
+        "waktu": str(body.get("waktu") or "").strip() or iso(),
+        "petugas": str(body.get("petugas") or "").strip(),
+        "kelurahan": str(body.get("kelurahan") or "").strip(),
+        "created_by": user["nama"], "created_at": iso(),
+    }
+    await db.tindak_lanjut_pustu.insert_one(doc)
+    await audit(user, "create", "tindak_lanjut_pustu", doc["id"], f"{nama} - {posyandu}")
+    doc.pop("_id", None)
+    return doc
+
+@api.put("/admin/tindak-lanjut/{tid}")
+async def tl_update(tid: str, body: dict, user=Depends(require_admin)):
+    upd = {}
+    for f in ["posyandu", "nama", "nik", "tanggal_lahir", "alamat", "no_telp", "masalah", "tindak_lanjut", "waktu", "petugas", "kelurahan"]:
+        if f in body:
+            upd[f] = str(body.get(f) or "").strip()
+    if not upd:
+        raise HTTPException(400, "Tidak ada perubahan")
+    r = await db.tindak_lanjut_pustu.update_one({"id": tid}, {"$set": upd})
+    if r.matched_count == 0:
+        raise HTTPException(404, "Data tidak ditemukan")
+    await audit(user, "update", "tindak_lanjut_pustu", tid, "")
+    return await db.tindak_lanjut_pustu.find_one({"id": tid}, {"_id": 0})
+
+@api.delete("/admin/tindak-lanjut/{tid}")
+async def tl_delete(tid: str, user=Depends(require_admin)):
+    r = await db.tindak_lanjut_pustu.delete_one({"id": tid})
+    if r.deleted_count == 0:
+        raise HTTPException(404, "Data tidak ditemukan")
+    await audit(user, "delete", "tindak_lanjut_pustu", tid, "")
+    return {"ok": True}
+
+
 # ==================== NOTIFIKASI ====================
 @api.get("/notifikasi")
 async def list_notif(user=Depends(require_admin)):
