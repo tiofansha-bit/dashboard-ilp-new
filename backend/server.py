@@ -274,6 +274,58 @@ async def update_question(kode: str, body: dict, user=Depends(require_admin)):
     await audit(user, "update", "master_pertanyaan", kode, json.dumps(body)[:200])
     return await db.master_questions.find_one({"kode": kode}, {"_id": 0})
 
+QUESTION_SECTIONS = {"ceklis", "tanda_bahaya"}
+QUESTION_JENIS = {"number", "single", "yesno", "pemeriksaan", "imunisasi", "danger"}
+
+@api.post("/master/questions")
+async def create_question(body: dict, user=Depends(require_admin)):
+    text = str(body.get("text") or "").strip()
+    group = str(body.get("group") or "").strip()
+    if not text or not group:
+        raise HTTPException(400, "Teks pertanyaan dan kelompok wajib diisi")
+    if group not in KELOMPOK_LABEL or group == "belum_ditentukan":
+        raise HTTPException(400, "Kelompok tidak valid")
+    section = body.get("section") if body.get("section") in QUESTION_SECTIONS else "ceklis"
+    jenis = body.get("jenis") if body.get("jenis") in QUESTION_JENIS else "yesno"
+    kode = str(body.get("kode") or "").strip().upper()
+    if kode:
+        if await db.master_questions.find_one({"kode": kode}):
+            raise HTTPException(400, "Kode sudah dipakai, gunakan kode lain")
+    else:
+        base = re.sub(r"[^A-Z0-9]+", "_", f"{group}_{text[:20]}".upper()).strip("_") or group.upper()
+        kode = base; n = 1
+        while await db.master_questions.find_one({"kode": kode}):
+            n += 1; kode = f"{base}_{n}"
+    last = await db.master_questions.find_one({"group": group}, sort=[("urutan", -1)])
+    urutan = (last.get("urutan", 0) + 1) if last else 1
+    opsi = body.get("opsi") or []
+    if isinstance(opsi, str):
+        opsi = [s.strip() for s in opsi.split(",") if s.strip()]
+    problem_when = body.get("problem_when") or []
+    if isinstance(problem_when, str):
+        problem_when = [s.strip() for s in problem_when.split(",") if s.strip()]
+    doc = {
+        "kode": kode, "group": group, "section": section, "text": text,
+        "definisi": str(body.get("definisi") or "").strip(),
+        "jenis": jenis, "satuan": (str(body.get("satuan")).strip() if body.get("satuan") else None),
+        "opsi": opsi, "wajib": bool(body.get("wajib", False)),
+        "problem_when": problem_when, "priority": (body.get("priority") or None),
+        "report_required": bool(body.get("report_required", False)),
+        "urutan": urutan, "deleted": False, "custom": True,
+    }
+    await db.master_questions.insert_one(doc)
+    await audit(user, "create", "master_pertanyaan", kode, text[:200])
+    doc.pop("_id", None)
+    return doc
+
+@api.delete("/master/questions/{kode}")
+async def delete_question(kode: str, user=Depends(require_admin)):
+    r = await db.master_questions.update_one({"kode": kode}, {"$set": {"deleted": True}})
+    if r.matched_count == 0:
+        raise HTTPException(404, "Pertanyaan tidak ditemukan")
+    await audit(user, "delete", "master_pertanyaan", kode, "")
+    return {"ok": True}
+
 @api.get("/master/groups")
 async def groups(user=Depends(get_current_user)):
     return [{"code": k, "label": v} for k, v in KELOMPOK_LABEL.items() if k not in ("belum_ditentukan",)]
