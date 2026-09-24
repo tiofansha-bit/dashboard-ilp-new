@@ -837,78 +837,320 @@ async def rekap(periode: str = "bulan", user=Depends(require_admin)):
     }
 
 # ==================== EXPORT ====================
-@api.get("/export/{jenis}")
-async def export(jenis: str, fmt: str = "csv", start: str = "", end: str = "", kelurahan: str = "", user=Depends(require_admin)):
+REPORT_TITLES = {
+    "kasus": "DAFTAR TINDAK LANJUT & SASARAN BERMASALAH",
+    "kunjungan": "REKAP KUNJUNGAN RUMAH KADER",
+    "keluarga": "DAFTAR KELUARGA TERDAFTAR",
+    "tindak_lanjut": "REKAP TINDAK LANJUT PUSTU",
+}
+EXPORT_STATUS_LABEL = {
+    "baru": "Baru", "sudah_dibaca": "Sudah Dibaca", "ditugaskan": "Ditugaskan", "dihubungi": "Dihubungi",
+    "dijadwalkan": "Dijadwalkan", "sudah_dikunjungi": "Sudah Dikunjungi", "dirujuk": "Dirujuk",
+    "menunggu_hasil": "Menunggu Hasil", "selesai": "Selesai", "tidak_dapat_ditindaklanjuti": "Tidak Dapat Ditindaklanjuti",
+    "terkirim": "Terkirim", "draf": "Draf",
+}
+EXPORT_PRIORITY_LABEL = {"merah": "Merah (Tanda Bahaya)", "kuning": "Kuning (Perlu Perhatian)", "hijau": "Hijau (Normal)"}
+
+
+def _fmt_tgl(v, with_time=False):
+    if not v:
+        return "-"
+    s = str(v)
+    try:
+        d = datetime.fromisoformat(s.replace("Z", "+00:00"))
+        return d.strftime("%d-%m-%Y %H:%M") if with_time else d.strftime("%d-%m-%Y")
+    except Exception:
+        return s[:10] or "-"
+
+
+def _yn(v):
+    return "Ya" if v is True else ("Tidak" if v is False else "-")
+
+
+def _rtrw(r):
+    rt, rw = r.get("rt") or "-", r.get("rw") or "-"
+    return f"{rt}/{rw}"
+
+
+def _report_columns(jenis):
+    """Return list of (label, extractor) with curated, human-readable columns."""
+    if jenis == "kasus":
+        return [
+            ("Nama Sasaran", lambda r: r.get("sasaran_nama") or "-"),
+            ("Kelompok", lambda r: KELOMPOK_LABEL.get(r.get("group"), r.get("group") or "-")),
+            ("Masalah Ditemukan", lambda r: r.get("masalah") or "-"),
+            ("Prioritas", lambda r: EXPORT_PRIORITY_LABEL.get(r.get("priority"), r.get("priority") or "-")),
+            ("Kelurahan", lambda r: r.get("kelurahan") or "-"),
+            ("RT/RW", _rtrw),
+            ("Posyandu", lambda r: r.get("posyandu") or "-"),
+            ("Kader Pelapor", lambda r: r.get("kader_nama") or "-"),
+            ("Waktu Lapor", lambda r: _fmt_tgl(r.get("waktu_lapor"), True)),
+            ("Status", lambda r: EXPORT_STATUS_LABEL.get(r.get("status"), r.get("status") or "-")),
+            ("Target Selesai", lambda r: _fmt_tgl(r.get("target_selesai"), True)),
+        ]
+    if jenis == "kunjungan":
+        return [
+            ("Tanggal", lambda r: _fmt_tgl(r.get("tanggal") or r.get("created_at"))),
+            ("Kepala Keluarga", lambda r: r.get("keluarga_nama") or "-"),
+            ("Kelurahan", lambda r: r.get("kelurahan") or "-"),
+            ("RT/RW", _rtrw),
+            ("Posyandu", lambda r: r.get("posyandu") or "-"),
+            ("Kader", lambda r: r.get("kader_nama") or "-"),
+            ("Anggota Dikunjungi", lambda r: str(len(r.get("anggota_ids") or []))),
+            ("Prioritas", lambda r: EXPORT_PRIORITY_LABEL.get(r.get("prioritas"), r.get("prioritas") or "-")),
+            ("Status", lambda r: EXPORT_STATUS_LABEL.get(r.get("status"), r.get("status") or "-")),
+        ]
+    if jenis == "keluarga":
+        return [
+            ("Nama Kepala Keluarga", lambda r: r.get("nama_kk") or "-"),
+            ("Alamat", lambda r: r.get("alamat") or "-"),
+            ("RT/RW", _rtrw),
+            ("Kelurahan", lambda r: r.get("kelurahan") or "-"),
+            ("Posyandu", lambda r: r.get("posyandu") or "-"),
+            ("No. HP", lambda r: r.get("no_hp") or "-"),
+            ("Jml Anggota", lambda r: str(r.get("jumlah_anggota") or "-")),
+            ("JKN", lambda r: _yn(r.get("punya_jkn"))),
+            ("Air Bersih", lambda r: _yn(r.get("air_bersih"))),
+            ("Jamban", lambda r: _yn(r.get("jamban"))),
+            ("Ventilasi", lambda r: _yn(r.get("ventilasi"))),
+        ]
+    if jenis == "tindak_lanjut":
+        return [
+            ("Posyandu", lambda r: r.get("posyandu") or "-"),
+            ("Nama", lambda r: r.get("nama") or "-"),
+            ("NIK", lambda r: r.get("nik") or "-"),
+            ("Tanggal Lahir", lambda r: _fmt_tgl(r.get("tanggal_lahir"))),
+            ("Alamat", lambda r: r.get("alamat") or "-"),
+            ("No. Telp", lambda r: r.get("no_telp") or "-"),
+            ("Masalah Ditemukan", lambda r: r.get("masalah") or "-"),
+            ("Tindak Lanjut", lambda r: r.get("tindak_lanjut") or "-"),
+            ("Petugas", lambda r: r.get("petugas") or "-"),
+            ("Waktu", lambda r: _fmt_tgl(r.get("waktu"))),
+        ]
+    return None
+
+
+async def _report_rows(jenis, start, end, kelurahan):
     if jenis == "kasus":
         q = {}
         if kelurahan:
             q["kelurahan"] = kelurahan
         if start or end:
             q["waktu_lapor"] = dt_range(start, end)
-        rows = await db.kasus.find(q, {"_id": 0, "riwayat": 0}).to_list(2000)
-    elif jenis == "keluarga":
+        return await db.kasus.find(q, {"_id": 0, "riwayat": 0}).sort("waktu_lapor", -1).to_list(5000)
+    if jenis == "keluarga":
         q = {"deleted": {"$ne": True}}
         if kelurahan:
             q["kelurahan"] = kelurahan
         if start or end:
             q["created_at"] = dt_range(start, end)
-        rows = await db.keluarga.find(q, {"_id": 0}).to_list(2000)
-    elif jenis == "kunjungan":
+        return await db.keluarga.find(q, {"_id": 0}).sort("nama_kk", 1).to_list(5000)
+    if jenis == "kunjungan":
         q = {}
         if kelurahan:
             q["kelurahan"] = kelurahan
         if start or end:
             q["created_at"] = dt_range(start, end)
-        rows = await db.kunjungan.find(q, {"_id": 0, "per_anggota": 0}).to_list(2000)
+        return await db.kunjungan.find(q, {"_id": 0, "per_anggota": 0}).sort("created_at", -1).to_list(5000)
+    if jenis == "tindak_lanjut":
+        q = {}
+        if kelurahan:
+            q["kelurahan"] = kelurahan
+        if start or end:
+            q["created_at"] = dt_range(start, end)
+        return await db.tindak_lanjut_pustu.find(q, {"_id": 0}).sort("created_at", -1).to_list(5000)
+    return None
+
+
+def _periode_str(start, end, kelurahan):
+    if start or end:
+        per = f"Periode: {_fmt_tgl(start) if start else 'Awal'} s.d. {_fmt_tgl(end) if end else 'Sekarang'}"
     else:
+        per = "Periode: Semua Data"
+    if kelurahan:
+        per += f"  |  Kelurahan: {kelurahan}"
+    return per
+
+
+@api.get("/export/{jenis}")
+async def export(jenis: str, fmt: str = "csv", start: str = "", end: str = "", kelurahan: str = "", user=Depends(require_admin)):
+    cols = _report_columns(jenis)
+    if cols is None:
         raise HTTPException(400, "Jenis laporan tidak dikenal")
+    rows = await _report_rows(jenis, start, end, kelurahan)
+    ak = await db.akreditasi.find_one({}, {"_id": 0, "puskesmas": 1})
+    puskesmas = (ak or {}).get("puskesmas") or "UPT Puskesmas Melati"
+    title = REPORT_TITLES[jenis]
+    periode = _periode_str(start, end, kelurahan)
+    dicetak = f"Dicetak: {_fmt_tgl(iso(), True)} oleh {user['nama']}"
+    headers = ["No"] + [c[0] for c in cols]
+    matrix = []
+    for i, r in enumerate(rows, 1):
+        matrix.append([str(i)] + [c[1](r) for c in cols])
+
     await audit(user, "export", jenis, "", f"{fmt} {start}-{end} {kelurahan}".strip())
+    fname = f"laporan_{jenis}_{now_utc().strftime('%Y%m%d')}"
+
     if fmt == "csv":
         import csv
         buf = io.StringIO()
-        if rows:
-            keys = list(rows[0].keys())
-            w = csv.DictWriter(buf, fieldnames=keys, extrasaction="ignore")
-            w.writeheader()
-            for r in rows:
-                w.writerow({k: (json.dumps(v, ensure_ascii=False) if isinstance(v, (dict, list)) else v) for k, v in r.items()})
-        return StreamingResponse(io.BytesIO(buf.getvalue().encode()), media_type="text/csv",
-            headers={"Content-Disposition": f"attachment; filename=laporan_{jenis}.csv"})
-    elif fmt == "excel":
+        buf.write(f"{title}\r\n{puskesmas}\r\n{periode}\r\n{dicetak}\r\n\r\n")
+        w = csv.writer(buf)
+        w.writerow(headers)
+        for row in matrix:
+            w.writerow(row)
+        w.writerow([])
+        w.writerow(["", f"Total data: {len(matrix)}"])
+        return StreamingResponse(io.BytesIO(buf.getvalue().encode("utf-8-sig")), media_type="text/csv",
+            headers={"Content-Disposition": f"attachment; filename={fname}.csv"})
+
+    if fmt == "excel":
         import openpyxl
-        wb = openpyxl.Workbook(); ws = wb.active; ws.title = jenis[:30]
-        if rows:
-            keys = list(rows[0].keys()); ws.append(keys)
-            for r in rows:
-                ws.append([json.dumps(v, ensure_ascii=False) if isinstance(v, (dict, list)) else v for v in r.values()])
+        from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+        from openpyxl.utils import get_column_letter
+        wb = openpyxl.Workbook(); ws = wb.active; ws.title = jenis[:28]
+        ncol = len(headers)
+        last_col = get_column_letter(ncol)
+        thin = Side(style="thin", color="B0B0B0")
+        border = Border(left=thin, right=thin, top=thin, bottom=thin)
+        # kop
+        meta = [(title, 14, True), (puskesmas, 11, True), (periode, 9, False), (dicetak, 9, False)]
+        for ri, (txt, sz, bold) in enumerate(meta, 1):
+            ws.merge_cells(f"A{ri}:{last_col}{ri}")
+            c = ws.cell(row=ri, column=1, value=txt)
+            c.font = Font(size=sz, bold=bold, color="0F766E" if ri == 1 else "334155")
+            c.alignment = Alignment(horizontal="center" if ri <= 2 else "left", vertical="center")
+        head_row = len(meta) + 2
+        # header
+        for ci, h in enumerate(headers, 1):
+            c = ws.cell(row=head_row, column=ci, value=h)
+            c.font = Font(bold=True, color="FFFFFF")
+            c.fill = PatternFill("solid", fgColor="0F766E")
+            c.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+            c.border = border
+        # data
+        for ri, row in enumerate(matrix, head_row + 1):
+            for ci, val in enumerate(row, 1):
+                c = ws.cell(row=ri, column=ci, value=val)
+                c.alignment = Alignment(vertical="top", wrap_text=True, horizontal="center" if ci == 1 else "left")
+                c.border = border
+        # column widths
+        widths = [len(h) for h in headers]
+        for row in matrix:
+            for ci, val in enumerate(row):
+                widths[ci] = max(widths[ci], min(len(str(val)), 45))
+        for ci, wd in enumerate(widths, 1):
+            ws.column_dimensions[get_column_letter(ci)].width = max(6, min(wd + 3, 48))
+        ws.freeze_panes = f"A{head_row + 1}"
+        ws.cell(row=head_row + len(matrix) + 2, column=1, value=f"Total data: {len(matrix)}").font = Font(bold=True, italic=True)
         out = io.BytesIO(); wb.save(out); out.seek(0)
         return StreamingResponse(out, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            headers={"Content-Disposition": f"attachment; filename=laporan_{jenis}.xlsx"})
-    elif fmt == "pdf":
+            headers={"Content-Disposition": f"attachment; filename={fname}.xlsx"})
+
+    if fmt == "pdf":
         from fpdf import FPDF
-        import textwrap
+
         def latin(s):
             return str(s).encode("latin-1", "replace").decode("latin-1")
-        pdf = FPDF(orientation="L")
-        pdf.set_auto_page_break(True, 15)
-        pdf.add_page()
-        pdf.set_font("Helvetica", "B", 14)
-        pdf.multi_cell(pdf.epw, 8, latin(f"Laporan {jenis} - PWS ILP MELATI"))
-        pdf.set_font("Helvetica", "", 8)
-        pdf.multi_cell(pdf.epw, 5, latin(f"Dicetak: {iso()[:19]} oleh {user['nama']}"))
-        pdf.ln(1)
-        for idx, r in enumerate(rows[:80]):
-            parts = [f"{k}: {v}" for k, v in list(r.items())[:6] if not isinstance(v, (dict, list))]
-            line = latin(" | ".join(parts))
-            line = "\n".join(textwrap.wrap(line, width=140)) or "-"
-            pdf.set_font("Helvetica", "B", 8)
-            pdf.multi_cell(pdf.epw, 5, latin(f"#{idx+1}"))
+
+        weights = {
+            "No": 0.5, "Masalah Ditemukan": 3.2, "Tindak Lanjut": 3.2, "Alamat": 2.6,
+            "Nama Sasaran": 2.2, "Kepala Keluarga": 2.2, "Nama Kepala Keluarga": 2.4, "Nama": 2.2,
+            "Kelompok": 1.6, "Prioritas": 1.8, "Status": 1.8, "Kader Pelapor": 1.8, "Kader": 1.8,
+            "Waktu Lapor": 1.6, "Target Selesai": 1.6, "Tanggal": 1.2, "Waktu": 1.2, "Tanggal Lahir": 1.4,
+            "NIK": 1.8, "No. Telp": 1.4, "No. HP": 1.4, "Petugas": 1.6,
+        }
+        pdf = FPDF(orientation="L", unit="mm", format="A4")
+        pdf.set_auto_page_break(False)
+        pdf.set_margins(10, 10, 10)
+        epw = pdf.epw
+        wsum = sum(weights.get(h, 1.4) for h in headers)
+        colw = [epw * weights.get(h, 1.4) / wsum for h in headers]
+        line_h = 4.6
+        bottom_limit = pdf.h - 18
+
+        def header_kop():
+            pdf.add_page()
+            pdf.set_font("Helvetica", "B", 13)
+            pdf.cell(epw, 6, latin(title), align="C", new_x="LMARGIN", new_y="NEXT")
+            pdf.set_font("Helvetica", "B", 10)
+            pdf.cell(epw, 5, latin(puskesmas), align="C", new_x="LMARGIN", new_y="NEXT")
             pdf.set_font("Helvetica", "", 8)
-            pdf.multi_cell(pdf.epw, 5, line)
-            pdf.ln(1)
+            pdf.cell(epw, 4.5, latin(periode), align="C", new_x="LMARGIN", new_y="NEXT")
+            pdf.cell(epw, 4.5, latin(dicetak), align="C", new_x="LMARGIN", new_y="NEXT")
+            pdf.ln(2)
+            draw_head()
+
+        def draw_head():
+            pdf.set_font("Helvetica", "B", 7.5)
+            pdf.set_fill_color(15, 118, 110)
+            pdf.set_text_color(255, 255, 255)
+            x, y = pdf.get_x(), pdf.get_y()
+            for i, h in enumerate(headers):
+                pdf.multi_cell(colw[i], 6, latin(h), border=1, align="C", fill=True,
+                               max_line_height=3, new_x="RIGHT", new_y="TOP")
+            pdf.set_xy(x, y + 6)
+            pdf.set_text_color(30, 41, 59)
+
+        def wrap(txt, w):
+            pdf.set_font("Helvetica", "", 7)
+            words = str(txt).split()
+            lines, cur = [], ""
+            for wd in words:
+                t = (cur + " " + wd).strip()
+                if pdf.get_string_width(latin(t)) <= w - 2:
+                    cur = t
+                else:
+                    if cur:
+                        lines.append(cur)
+                    cur = wd
+            if cur:
+                lines.append(cur)
+            return lines or [""]
+
+        header_kop()
+        pdf.set_font("Helvetica", "", 7)
+        fill = False
+        for row in matrix:
+            cell_lines = [wrap(row[i], colw[i]) for i in range(len(headers))]
+            nlines = max(len(cl) for cl in cell_lines)
+            rh = nlines * line_h + 1.5
+            if pdf.get_y() + rh > bottom_limit:
+                pdf.set_font("Helvetica", "", 7)
+                header_kop()
+                pdf.set_font("Helvetica", "", 7)
+            x, y = pdf.get_x(), pdf.get_y()
+            pdf.set_fill_color(244, 247, 246)
+            for i in range(len(headers)):
+                pdf.rect(x, y, colw[i], rh, style="DF" if fill else "D")
+                ty = y + 1
+                for ln in cell_lines[i]:
+                    pdf.set_xy(x + 1, ty)
+                    pdf.cell(colw[i] - 2, line_h, latin(ln), align="C" if i == 0 else "L")
+                    ty += line_h
+                x += colw[i]
+            pdf.set_xy(pdf.l_margin, y + rh)
+            fill = not fill
+
+        pdf.ln(2)
+        pdf.set_font("Helvetica", "B", 8)
+        if pdf.get_y() + 40 > pdf.h - 10:
+            pdf.add_page()
+        pdf.cell(epw, 5, latin(f"Total data: {len(matrix)}"), new_x="LMARGIN", new_y="NEXT")
+        # tanda tangan
+        pdf.ln(4)
+        pdf.set_font("Helvetica", "", 9)
+        col = epw / 2
+        yb = pdf.get_y()
+        pdf.set_xy(pdf.l_margin + col, yb)
+        pdf.multi_cell(col, 5, latin(f"{_fmt_tgl(iso())}\nMengetahui,\nKepala {puskesmas}"), align="C")
+        yb2 = pdf.get_y() + 20
+        pdf.set_xy(pdf.l_margin + col, yb2)
+        pdf.cell(col, 5, latin("( ................................ )"), align="C")
         out = io.BytesIO(pdf.output()); out.seek(0)
         return StreamingResponse(out, media_type="application/pdf",
-            headers={"Content-Disposition": f"attachment; filename=laporan_{jenis}.pdf"})
+            headers={"Content-Disposition": f"attachment; filename={fname}.pdf"})
+
     raise HTTPException(400, "Format tidak dikenal")
 
 # ==================== KADER MANAGEMENT ====================
